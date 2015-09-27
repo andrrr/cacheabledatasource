@@ -80,64 +80,56 @@
             );
         }
 
-        public function flushCache($context)
+        public function flushCache($context) 
         {
-            $this->__fetchSectionsFromContext($context);
+
+            $flushSections = $this->__fetchSectionsFromContext($context);
 
             $cacheDir = CACHE . '/cacheabledatasource/';
 
             try {
-                foreach (DatasourceManager::listAll() as $ds) {
-                    if (!in_array($ds['source'], $this->_sectionsToFlush)) {
-                        continue;
-                    }
+                foreach(DatasourceManager::listAll() as $ds) {
+                    if(!in_array($ds['source'], $flushSections)) continue;
 
-                    $cache = glob($cacheDir.$ds['handle'].'_*.xml');
-                    if (empty($cache)) {
-                        continue;
-                    }
-
-                    foreach ($cache as $file) {
+                    $cache = glob($cacheDir . $ds['handle'] . '_*.xml');
+                    if(empty($cache)) continue;
+                    foreach($cache as $file) {
                         unlink($file);
                     }
                 }
-            } catch (Exception $e) {
-                Symphony::Log()->writeToLog(date('d.m.y H:i:s') . ' > CacheableDatasource: '. $e->getMessage(), true);
+
+            } catch(Exception $e){
+                Symphony::Log()->writeToLog(date('d.m.y H:i:s') . ' > CacheableDatasource: ' . $e->getMessage(), true);
             }
         }
 
-        private function __fetchSectionsFromContext($context)
+        private function __fetchSectionsFromContext($context) 
         {
-            if (!is_null($this->_sectionsToFlush)) {
-                return;
-            }
 
-            $this->_sectionsToFlush = array();
-
-            if ($context['delegate'] == 'EntryPreDelete' || $context['delegate'] == 'EntriesPostOrder') {
-                require_once(TOOLKIT . '/class.entrymanager.php');
-                $this->_sectionsToFlush[0] = EntryManager::fetchEntrySectionID($context['entry_id'][0]);
-            } elseif ($context['delegate'] == 'EventFinalSaveFilter') {
-                require_once(TOOLKIT . '/class.entrymanager.php');
-                $this->_sectionsToFlush[0] = EntryManager::fetchEntrySectionID($context['entry']->get('id'));
+            if($context['delegate'] == 'EntryPreDelete' || $context['delegate'] == 'EntriesPostOrder') {
+                $current_section_id = EntryManager::fetchEntrySectionID($context['entry_id'][0]);
+            } else if($context['delegate'] == 'EventFinalSaveFilter') {
+                $current_section_id = EntryManager::fetchEntrySectionID($context['entry']->get('id'));
             } else {
-                $this->_sectionsToFlush[0] = $context['section']->get('id');
+                $current_section_id = $context['section']->get('id');
             }
 
-            $associatedSections = Symphony::Database()->fetch(
-                sprintf('SELECT DISTINCT `child_section_id` value, `parent_section_id` value FROM `tbl_sections_association`
-					WHERE `parent_section_id` = %d OR `child_section_id` = %d',
-                    $this->_sectionsToFlush[0],
-                    $this->_sectionsToFlush[0]
+            $data = Symphony::Database()->fetch(
+                sprintf('SELECT DISTINCT `child_section_id`, `parent_section_id` FROM `tbl_sections_association`
+                    WHERE `parent_section_id` = %d OR `child_section_id` = %d',
+                    $current_section_id,
+                    $current_section_id
                 )
             );
 
-            General::flattenArray($associatedSections);
-            $associatedSections = array_unique(array_values($associatedSections));
+            $result = array($current_section_id);
 
-            if (is_array($associatedSections) && !empty($associatedSections)) {
-                $this->_sectionsToFlush = array_merge($this->_sectionsToFlush, $associatedSections);
+            foreach ($data as $v) {
+                array_push($result, $v['child_section_id']);
+                array_push($result, $v['parent_section_id']);
             }
+
+            return array_unique($result);
         }
 
         public function eventFinalSaveFilter(array $context)
